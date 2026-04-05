@@ -1,4 +1,4 @@
-package main
+package config
 
 import (
 	"flag"
@@ -97,7 +97,7 @@ func parseFile(filePath string) (*Config, error) {
 		return nil, err
 	}
 
-	_, yggnet, err = net.ParseCIDR(cfg.MeshPrefix)
+	_, _, err = net.ParseCIDR(cfg.MeshPrefix)
 	if err != nil {
 		return nil, err
 	}

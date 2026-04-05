@@ -3,14 +3,18 @@ package main
 // Based on https://github.com/katakonst/go-dns-proxy/releases
 
 import (
-	"github.com/miekg/dns"
 	"log"
 	"net"
 	"time"
+
+	"github.com/WGOS/yggdns64/internal/config"
+	"github.com/WGOS/yggdns64/internal/logger"
+	"github.com/WGOS/yggdns64/internal/proxy"
+	"github.com/miekg/dns"
 )
 
 func main() {
-	cfg, err := InitConfig()
+	cfg, err := config.InitConfig()
 	if err != nil {
 		log.Fatalf("Failed to load configs: %s", err)
 	}
@@ -20,23 +24,26 @@ func main() {
 		log.Fatalf("Wrong prefix format: %s", cfg.Prefix)
 	}
 
-	dnsProxy := DNSProxy{
-		Cache:          New(cfg.Cache.ExpTime*time.Minute, cfg.Cache.PurgeTime*time.Minute),
-		forwarders:     cfg.Forwarders,
-		static:         cfg.Static,
-		prefix:         prefix,
-		defaultForward: cfg.Default,
-		strictIPv6:     cfg.StrictIPv6,
-		ia:             cfg.IA,
-                FallBack:       cfg.FallBack,
-	}
+	_, yggnet, _ := net.ParseCIDR(cfg.MeshPrefix)
 
-	logger := NewLogger(cfg.LogLevel)
+	dnsProxy := proxy.NewProxy(
+		proxy.New(cfg.Cache.ExpTime*time.Minute, cfg.Cache.PurgeTime*time.Minute),
+		cfg.Static,
+		cfg.Forwarders,
+		cfg.Default,
+		prefix,
+		cfg.StrictIPv6,
+		cfg.IA,
+		cfg.FallBack,
+		yggnet,
+	)
+
+	logger := logger.NewLogger(cfg.LogLevel)
 
 	dns.HandleFunc(".", func(w dns.ResponseWriter, r *dns.Msg) {
 		switch r.Opcode {
 		case dns.OpcodeQuery:
-			m, err := dnsProxy.getResponse(r)
+			m, err := dnsProxy.GetResponse(r)
 			if err != nil {
 				logger.Errorf("Failed lookup for %s with error: %s\n", r, err.Error())
 			}

@@ -1,4 +1,4 @@
-package main
+package proxy
 
 // Taked from https://github.com/patrickmn/go-cache
 

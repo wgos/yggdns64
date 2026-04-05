@@ -1,15 +1,14 @@
-package main
+package proxy
 
 import (
-	"github.com/miekg/dns"
+	"fmt"
 	"net"
 	"strconv"
 	"strings"
-	//    "github.com/gdexlab/go-render/render"
-	"fmt"
-)
 
-var yggnet *net.IPNet
+	"github.com/WGOS/yggdns64/internal/config"
+	"github.com/miekg/dns"
+)
 
 type DNSProxy struct {
 	Cache          *Cache
@@ -18,11 +17,12 @@ type DNSProxy struct {
 	defaultForward string
 	prefix         net.IP
 	strictIPv6     bool
-	ia             InvalidAddress
+	ia             config.InvalidAddress
 	FallBack       bool
+	yggnet         *net.IPNet
 }
 
-func (proxy *DNSProxy) getResponse(requestMsg *dns.Msg) (*dns.Msg, error) {
+func (proxy *DNSProxy) GetResponse(requestMsg *dns.Msg) (*dns.Msg, error) {
 	responseMsg := new(dns.Msg)
 	var answer *dns.Msg
 	var err error
@@ -102,26 +102,26 @@ func (proxy *DNSProxy) processAnswerArray(q []dns.RR) (answer []dns.RR) {
 		case *dns.AAAA:
 			if rr.AAAA.IsUnspecified() {
 				switch proxy.ia {
-				case DiscardInvalidAddress: // drop
+				case config.DiscardInvalidAddress: // drop
 					continue
-				case IgnoreInvalidAddress: // also drop
+				case config.IgnoreInvalidAddress: // also drop
 					continue
-				case ProcessInvalidAddress: // return "as-is"
+				case config.ProcessInvalidAddress: // return "as-is"
 					answer = append(answer, rr)
 				}
 			} else {
 				// if answer contains ygg address - return it
-				if yggnet.Contains(rr.AAAA) {
+				if proxy.yggnet.Contains(rr.AAAA) {
 					answer = append(answer, rr)
 				}
 			}
 		case *dns.A:
 			if rr.A.IsUnspecified() {
 				switch proxy.ia {
-				case DiscardInvalidAddress: // drop
+				case config.DiscardInvalidAddress: // drop
 					continue
-				case IgnoreInvalidAddress: // return "as-is"
-				case ProcessInvalidAddress: // return "[::]"
+				case config.IgnoreInvalidAddress: // return "as-is"
+				case config.ProcessInvalidAddress: // return "[::]"
 					nrr, _ := dns.NewRR(rr.Hdr.Name + " IN AAAA ::")
 					answer = append(answer, nrr)
 					if !proxy.strictIPv6 {
@@ -234,7 +234,7 @@ func (proxy *DNSProxy) processTypeAAAA(dnsServer string, q *dns.Question, reques
 		for _, orr := range msg.Answer {
 			a, okA := orr.(*dns.AAAA)
 			if okA {
-				if yggnet.Contains(a.AAAA) {
+				if proxy.yggnet.Contains(a.AAAA) {
 					answer = append(answer, orr)
 				}
 				answerv6 = append(answerv6, orr)
@@ -268,10 +268,10 @@ func (proxy *DNSProxy) processTypeAAAA(dnsServer string, q *dns.Question, reques
 			if okA {
 				if a.A.IsUnspecified() {
 					switch proxy.ia {
-					case DiscardInvalidAddress: // drop
+					case config.DiscardInvalidAddress: // drop
 						continue
-					case IgnoreInvalidAddress: // return "as-is"
-					case ProcessInvalidAddress: // return "[::]"
+					case config.IgnoreInvalidAddress: // return "as-is"
+					case config.ProcessInvalidAddress: // return "[::]"
 						nrr, _ := dns.NewRR(q.Name + " IN AAAA ::")
 						answer = append(answer, nrr)
 						continue
@@ -418,4 +418,18 @@ func (proxy *DNSProxy) ReversePTR(ptr string) (ipv4 net.IP, err error) {
 	ipv4[1] = ip[13]
 	ipv4[0] = ip[12]
 	return
+}
+
+func NewProxy(cache *Cache, static, forwarders map[string]string, defaultForward string, prefix net.IP, strictIPv6 bool, ia config.InvalidAddress, fallback bool, yggnet *net.IPNet) *DNSProxy {
+	return &DNSProxy{
+		Cache:          cache,
+		static:         static,
+		forwarders:     forwarders,
+		defaultForward: defaultForward,
+		prefix:         prefix,
+		strictIPv6:     strictIPv6,
+		ia:             ia,
+		FallBack:       fallback,
+		yggnet:         yggnet,
+	}
 }

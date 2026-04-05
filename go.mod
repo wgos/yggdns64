@@ -1,6 +1,6 @@
-module yggdns64
+module github.com/WGOS/yggdns64
 
-go 1.18
+go 1.24
 
 require (
 	github.com/miekg/dns v1.1.43
