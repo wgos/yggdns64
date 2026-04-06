@@ -45,7 +45,8 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v7
         with:
-          path: dist/*
+          name: ${{ env.GO_BIN_NAME }}-${{ matrix.goos }}-${{ matrix.goarch }}-$(git describe --tags --always)${{ matrix.goos == 'windows' && '.exe' || '' }}
+          path: dist/
           retention-days: 1
 
       - name: Release
