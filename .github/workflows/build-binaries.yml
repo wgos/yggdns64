@@ -33,9 +33,9 @@ jobs:
         run: |
           mkdir -p dist
           OUTPUT_PATH=dist/${{ env.GO_BIN_NAME }}\
+          -$(git describe --tags --always)\
           -${{ env.GOOS }}\
           -${{ env.GOARCH }}\
-          -$(git describe --tags --always)\
           ${{ env.GOOS == 'windows' && '.exe' || '' }}
           
           go build \
