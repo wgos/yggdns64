@@ -23,32 +23,30 @@ func (proxy *DNSProxy) GetResponse(requestMsg *dns.Msg) (*dns.Msg, error) {
 	if len(requestMsg.Question) > 0 {
 		question := requestMsg.Question[0]
 
-		// todo: make it forward to all upstreams
 		upstreams := proxy.getForwarder(question.Name)
-		dnsServer := upstreams[0]
 
 		if proxy.cfg.Translation.IsIgnored(question.Name) {
-			answer, err = proxy.processOtherTypes(dnsServer, &question, requestMsg)
+			answer, err = proxy.processOtherTypes(upstreams, &question, requestMsg)
 		} else {
 			switch question.Qtype {
 			case dns.TypeA:
 				if proxy.cfg.StrictIPv6 {
-					answer, err = proxy.processTypeA(dnsServer, &question, requestMsg)
+					answer, err = proxy.processTypeA(upstreams, &question, requestMsg)
 				} else {
-					answer, err = proxy.processOtherTypes(dnsServer, &question, requestMsg)
+					answer, err = proxy.processOtherTypes(upstreams, &question, requestMsg)
 				}
 
 			case dns.TypeAAAA:
-				answer, err = proxy.processTypeAAAA(dnsServer, &question, requestMsg)
+				answer, err = proxy.processTypeAAAA(upstreams, &question, requestMsg)
 
 			case dns.TypePTR:
-				answer, err = proxy.processTypePTR(dnsServer, &question, requestMsg)
+				answer, err = proxy.processTypePTR(upstreams, &question, requestMsg)
 
 			case dns.TypeANY:
-				answer, err = proxy.processTypeANY(dnsServer, &question, requestMsg)
+				answer, err = proxy.processTypeANY(upstreams, &question, requestMsg)
 
 			default:
-				answer, err = proxy.processOtherTypes(dnsServer, &question, requestMsg)
+				answer, err = proxy.processOtherTypes(upstreams, &question, requestMsg)
 			}
 		}
 	}
@@ -62,12 +60,12 @@ func (proxy *DNSProxy) GetResponse(requestMsg *dns.Msg) (*dns.Msg, error) {
 	return answer, err
 }
 
-func (proxy *DNSProxy) processOtherTypes(dnsServer string, q *dns.Question, requestMsg *dns.Msg) (*dns.Msg, error) {
+func (proxy *DNSProxy) processOtherTypes(upstreams []string, q *dns.Question, requestMsg *dns.Msg) (*dns.Msg, error) {
 	queryMsg := new(dns.Msg)
 	requestMsg.CopyTo(queryMsg)
 	queryMsg.Question = []dns.Question{*q}
 
-	msg, err := lookup(dnsServer, queryMsg)
+	msg, err := lookup(upstreams, queryMsg)
 	if err != nil {
 		return nil, err
 	}
@@ -76,12 +74,12 @@ func (proxy *DNSProxy) processOtherTypes(dnsServer string, q *dns.Question, requ
 }
 
 // Query ANY
-func (proxy *DNSProxy) processTypeANY(dnsServer string, q *dns.Question, requestMsg *dns.Msg) (*dns.Msg, error) {
+func (proxy *DNSProxy) processTypeANY(upstreams []string, q *dns.Question, requestMsg *dns.Msg) (*dns.Msg, error) {
 	queryMsg := new(dns.Msg)
 	requestMsg.CopyTo(queryMsg)
 	queryMsg.Question = []dns.Question{*q}
 
-	msg, err := lookup(dnsServer, queryMsg)
+	msg, err := lookup(upstreams, queryMsg)
 	if err != nil {
 		return nil, err
 	}
@@ -142,7 +140,7 @@ func (proxy *DNSProxy) processAnswerArray(q []dns.RR) (answer []dns.RR) {
 }
 
 // Query PTR
-func (proxy *DNSProxy) processTypePTR(dnsServer string, q *dns.Question, requestMsg *dns.Msg) (*dns.Msg, error) {
+func (proxy *DNSProxy) processTypePTR(upstreams []string, q *dns.Question, requestMsg *dns.Msg) (*dns.Msg, error) {
 	queryMsg := new(dns.Msg)
 	requestMsg.CopyTo(queryMsg)
 	//    queryMsg.Question = []dns.Question{*q}
@@ -157,7 +155,7 @@ func (proxy *DNSProxy) processTypePTR(dnsServer string, q *dns.Question, request
 	q.Name, _ = dns.ReverseAddr(ip.String())
 	queryMsg.Question = []dns.Question{*q}
 
-	msg, err := lookup(dnsServer, queryMsg)
+	msg, err := lookup(upstreams, queryMsg)
 	if err != nil {
 		return nil, err
 	}
@@ -177,11 +175,11 @@ func (proxy *DNSProxy) processTypePTR(dnsServer string, q *dns.Question, request
 }
 
 // Query A record. Emulate "no record" for existings A
-func (proxy *DNSProxy) processTypeA(dnsServer string, q *dns.Question, requestMsg *dns.Msg) (*dns.Msg, error) {
+func (proxy *DNSProxy) processTypeA(upstreams []string, q *dns.Question, requestMsg *dns.Msg) (*dns.Msg, error) {
 	queryMsg := new(dns.Msg)
 	requestMsg.CopyTo(queryMsg)
 	queryMsg.Question = []dns.Question{*q}
-	msg, err := lookup(dnsServer, queryMsg)
+	msg, err := lookup(upstreams, queryMsg)
 	if err != nil {
 		queryMsg.MsgHdr.Rcode = dns.RcodeServerFailure
 		queryMsg.MsgHdr.Opcode = dns.OpcodeNotify
@@ -191,7 +189,7 @@ func (proxy *DNSProxy) processTypeA(dnsServer string, q *dns.Question, requestMs
 	return msg, nil
 }
 
-func (proxy *DNSProxy) processTypeAAAA(dnsServer string, q *dns.Question, requestMsg *dns.Msg) (msg *dns.Msg, err error) {
+func (proxy *DNSProxy) processTypeAAAA(upstreams []string, q *dns.Question, requestMsg *dns.Msg) (msg *dns.Msg, err error) {
 	msg = new(dns.Msg)
 
 	cacheAnswer, found := proxy.cache.Get(q.Name)
@@ -223,7 +221,7 @@ func (proxy *DNSProxy) processTypeAAAA(dnsServer string, q *dns.Question, reques
 		requestMsg.CopyTo(queryMsg)
 		queryMsg.Question = []dns.Question{*q}
 
-		msg, err = lookup(dnsServer, queryMsg)
+		msg, err = lookup(upstreams, queryMsg)
 		if err != nil {
 			return nil, err
 		}
@@ -255,7 +253,7 @@ func (proxy *DNSProxy) processTypeAAAA(dnsServer string, q *dns.Question, reques
 		requestMsg.CopyTo(queryMsg)
 		queryMsg.Question = []dns.Question{*q}
 
-		msg, err = lookup(dnsServer, queryMsg)
+		msg, err = lookup(upstreams, queryMsg)
 		if err != nil {
 			return nil, err
 		}
@@ -336,15 +334,43 @@ func GetOutboundIP() (net.IP, error) {
 	return localAddr.IP, nil
 }
 
-func lookup(server string, m *dns.Msg) (*dns.Msg, error) {
-	dnsClient := new(dns.Client)
-	dnsClient.Net = "udp"
-	response, _, err := dnsClient.Exchange(m, server)
-	if err != nil {
-		return nil, err
+func lookup(servers []string, m *dns.Msg) (*dns.Msg, error) {
+	if len(servers) == 0 {
+		return nil, fmt.Errorf("no upstream servers configured")
 	}
 
-	return response, nil
+	resCh := make(chan *dns.Msg, len(servers))
+	errCh := make(chan error, len(servers))
+
+	for _, server := range servers {
+		go func(srv string) {
+			dnsClient := new(dns.Client)
+			dnsClient.Net = "udp"
+			msg := m.Copy()
+			response, _, err := dnsClient.Exchange(msg, srv)
+			if err != nil {
+				errCh <- err
+				return
+			}
+			resCh <- response
+		}(server)
+	}
+
+	var lastErr error
+	for i := 0; i < len(servers); i++ {
+		select {
+		case resp := <-resCh:
+			return resp, nil
+		case err := <-errCh:
+			lastErr = err
+		}
+	}
+
+	if lastErr != nil {
+		return nil, lastErr
+	}
+
+	return nil, fmt.Errorf("no response from upstreams")
 }
 
 func (proxy *DNSProxy) MakeFakeIP(domain string, r net.IP) string {
