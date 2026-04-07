@@ -17,4 +17,4 @@ Features added compared to the original [ufm/yggdns64](https://github.com/ufm/yg
 - [x] Add pipeline for binary builds
 - [x] Config rework
 - [ ] Support TCP
-- [ ] Forward query to multiple upstreams
+- [x] Forward query to multiple upstreams
